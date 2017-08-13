@@ -1,6 +1,7 @@
 package com.chy.chapter2.utils;
 
 
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.commons.dbutils.QueryRunner;
 import org.apache.commons.dbutils.handlers.BeanHandler;
 import org.apache.commons.dbutils.handlers.BeanListHandler;
@@ -27,40 +28,46 @@ public class DataBaseHelper {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DataBaseHelper.class);
 
-    private static final String DRIVER;
-    private static final String URL;
-    private static final String USERNAME;
-    private static final String PASSWORD;
+    private static final ThreadLocal<Connection> CONNECTION_HOLDER;
 
-    private static final QueryRunner QUERY_RUNNER = new QueryRunner();
+    private static final QueryRunner QUERY_RUNNER;
+
+    private static final BasicDataSource DATA_SOURCE;
 
     static {
+
         Properties properties = PropsUtil.loadProps("jdbc.properties");
-        DRIVER = properties.getProperty("jdbc.driver");
-        URL = properties.getProperty("jdbc.url");
-        USERNAME = properties.getProperty("jdbc.username");
-        PASSWORD = properties.getProperty("jdbc.password");
+        String driver = properties.getProperty("jdbc.driver");
+        String url = properties.getProperty("jdbc.url");
+        String username = properties.getProperty("jdbc.username");
+        String password = properties.getProperty("jdbc.password");
 
-        //加载jdbc驱动
-        try {
-            Class.forName(DRIVER);
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-            LOGGER.error("con't load jdbc driver", e);
-        }
+        CONNECTION_HOLDER = new ThreadLocal<>();
+        QUERY_RUNNER = new QueryRunner();
+        DATA_SOURCE = new BasicDataSource();
 
+        DATA_SOURCE.setUrl(url);
+        DATA_SOURCE.setDriverClassName(driver);
+        DATA_SOURCE.setUsername(username);
+        DATA_SOURCE.setPassword(password);
     }
 
     /**
      * 获取connection连接
      */
     public static Connection getConnection() {
-        Connection conn = null;
-        try {
-            conn = DriverManager.getConnection(URL, USERNAME, PASSWORD);
-        } catch (SQLException e) {
-            LOGGER.error("get connection failure", e);
+        Connection conn = CONNECTION_HOLDER.get();
+    if(conn == null){
+        try{
+            conn = DATA_SOURCE.getConnection();
+        }catch (SQLException e){
+            LOGGER.error("get connection failure",e);
+            throw new RuntimeException(e);
+        }finally {
+            CONNECTION_HOLDER.set(conn);
         }
+
+    }
         return conn;
     }
 
