@@ -11,6 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.beans.PropertyDescriptor;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -42,7 +46,7 @@ public class DataBaseHelper {
         String username = properties.getProperty("jdbc.username");
         String password = properties.getProperty("jdbc.password");
 
-        CONNECTION_HOLDER = new ThreadLocal<>();
+        CONNECTION_HOLDER = new ThreadLocal<Connection>();
         QUERY_RUNNER = new QueryRunner();
         DATA_SOURCE = new BasicDataSource();
 
@@ -57,17 +61,16 @@ public class DataBaseHelper {
      */
     public static Connection getConnection() {
         Connection conn = CONNECTION_HOLDER.get();
-    if(conn == null){
-        try{
-            conn = DATA_SOURCE.getConnection();
-        }catch (SQLException e){
-            LOGGER.error("get connection failure",e);
-            throw new RuntimeException(e);
-        }finally {
-            CONNECTION_HOLDER.set(conn);
+        if(conn == null){
+            try{
+                conn = DATA_SOURCE.getConnection();
+            }catch (SQLException e){
+                LOGGER.error("get connection failure",e);
+                throw new RuntimeException(e);
+            }finally {
+                CONNECTION_HOLDER.set(conn);
+            }
         }
-
-    }
         return conn;
     }
 
@@ -146,9 +149,9 @@ public class DataBaseHelper {
     /**
      * 执行sql  包含insert,update,delete
      */
-    public static int excuteUpdate(Connection conn, String sql, Object... params) {
+    public static int excuteUpdate(String sql, Object... params) {
         int rows = 0;
-
+        Connection conn = getConnection();
         try {
             rows = QUERY_RUNNER.update(conn, sql, params);
         } catch (SQLException e) {
@@ -170,7 +173,7 @@ public class DataBaseHelper {
     /**
      * 新增数据
      */
-    public static <T> boolean insertEntity(Class<T> entityClass, Connection conn, Map<String, Object> fieldMap) {
+    public static <T> boolean insertEntity(Class<T> entityClass, Map<String, Object> fieldMap) {
         //fieldMap 的map集合中,key对应列名 , value对应行数据
         if (CollectionUtil.isEmpty(fieldMap)) {
             LOGGER.error("can't insert entity : fieldMap is empty");
@@ -195,13 +198,13 @@ public class DataBaseHelper {
         //values参数
         Object[] params = fieldMap.values().toArray();
 
-        return excuteUpdate(conn, sql, params) == 1;
+        return excuteUpdate(sql, params) == 1;
     }
 
     /**
      * 更新数据
      */
-    public static <T> boolean updateEntity(Class<T> entityClass, Connection conn, Map<String, Object> fieldMap) {
+    public static <T> boolean updateEntity(Class<T> entityClass, Map<String, Object> fieldMap) {
         if (CollectionUtil.isEmpty(fieldMap)) {
             LOGGER.error("can't update entty : fieldMap is empty");
             return false;
@@ -216,13 +219,13 @@ public class DataBaseHelper {
 
         Object[] params = fieldMap.values().toArray();
 
-        return excuteUpdate(conn, sql, params) == 1;
+        return excuteUpdate(sql, params) == 1;
     }
 
     /**
      * 删除数据
      */
-    public static <T> boolean deleteEntity(Class<T> entityClass, Connection conn, Map<String, Object> fieldMap) {
+    public static <T> boolean deleteEntity(Class<T> entityClass, Map<String, Object> fieldMap) {
         if (CollectionUtil.isEmpty(fieldMap)) {
             LOGGER.error("can't delete entity : fieldMap is empty");
             return false;
@@ -239,6 +242,23 @@ public class DataBaseHelper {
 
         Object[] params = fieldMap.values().toArray();
 
-        return excuteUpdate(conn, sql, params) == 1;
+        return excuteUpdate(sql, params) == 1;
+    }
+
+    /**
+     * 执行sql文件
+     */
+    public static void excuteSqlFile(String fileName){
+        InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+        String sql = "";
+        try {
+            while(reader != null && (sql = reader.readLine()) != null){
+                DataBaseHelper.excuteUpdate(sql);
+            }
+        } catch (IOException e) {
+            LOGGER.error("excute sql file failure",e);
+            throw new RuntimeException(e);
+        }
     }
 }
